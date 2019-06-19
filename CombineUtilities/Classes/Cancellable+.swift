@@ -10,12 +10,8 @@ import Combine
 
 public class CancellableBag: Cancellable {
 
-    private let lock = os_unfair_lock_t.allocate(capacity: 1)
+    private var lock = os_unfair_lock()
     private var cancellables: [Cancellable] = []
-
-    public init() {
-        lock.initialize(to: os_unfair_lock())
-    }
 
     deinit {
         cancel()
@@ -23,13 +19,13 @@ public class CancellableBag: Cancellable {
 
     public func append(_ cancellable: Cancellable) {
 
-        lock.execute {
+        synchronized(&lock) {
             cancellables.append(cancellable)
         }
     }
 
     public func cancel() {
-        lock.execute {
+        synchronized(&lock) {
             cancellables.forEach { $0.cancel() }
             cancellables = []
         }
@@ -43,11 +39,9 @@ public extension Cancellable {
     }
 }
 
-extension UnsafeMutablePointer where Pointee == os_unfair_lock_s {
+private func synchronized(_ lock: os_unfair_lock_t, block: () -> Void) {
+    os_unfair_lock_lock(lock)
+    defer { os_unfair_lock_unlock(lock) }
 
-    func execute(execute: () -> Void) {
-        os_unfair_lock_lock(self)
-        execute()
-        os_unfair_lock_unlock(self)
-    }
+    block()
 }
